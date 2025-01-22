@@ -25,35 +25,42 @@
       </property>
       <layout class="QHBoxLayout" name="horizontalLayout">
        <item>
-        <widget class="QPushButton" name="pushButton">
+        <widget class="QPushButton" name="btn_inicio">
          <property name="text">
-          <string>HOME</string>
+          <string>Inicio</string>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="pushButton_2">
+        <widget class="QPushButton" name="btn_talhoes">
          <property name="text">
-          <string>TABELAS</string>
+          <string>Talhoes</string>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="pushButton_3">
+        <widget class="QPushButton" name="btn_Maquinas">
          <property name="text">
-          <string>SOBRE</string>
+          <string>Maquinas</string>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="pushButton_4">
+        <widget class="QPushButton" name="btn_Produtos">
          <property name="text">
-          <string>CONTATO</string>
+          <string>Produtos</string>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="pushButton_5">
+        <widget class="QPushButton" name="btn_usuarios">
+         <property name="text">
+          <string>Usuarios</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btn_nfe">
          <property name="text">
           <string>NF-e</string>
          </property>
@@ -65,7 +72,7 @@
     <item>
      <widget class="QStackedWidget" name="stackedWidget">
       <property name="currentIndex">
-       <number>0</number>
+       <number>1</number>
       </property>
       <widget class="QWidget" name="page">
        <layout class="QVBoxLayout" name="verticalLayout_2">
@@ -81,10 +88,10 @@
               <item>
                <layout class="QHBoxLayout" name="horizontalLayout_3">
                 <item>
-                 <widget class="QLineEdit" name="lineEdit"/>
+                 <widget class="QLineEdit" name="txt_abrir"/>
                 </item>
                 <item>
-                 <widget class="QPushButton" name="pushButton_6">
+                 <widget class="QPushButton" name="btn_abrir">
                   <property name="text">
                    <string>Abrir</string>
                   </property>
@@ -93,7 +100,7 @@
                </layout>
               </item>
               <item>
-               <widget class="QTreeWidget" name="treeWidget">
+               <widget class="QTreeWidget" name="widget_table">
                 <column>
                  <property name="text">
                   <string>NF-e</string>
