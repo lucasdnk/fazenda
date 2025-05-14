@@ -1,0 +1,6 @@
+PyQt5==5.15.9
+SQLAlchemy==2.0.23
+sqlalchemy_utils==0.41.1
+python-dotenv==1.0.0
+# Dependências opcionais para desenvolvimento
+# pyqt5-tools é opcional e requer configuração adicional
