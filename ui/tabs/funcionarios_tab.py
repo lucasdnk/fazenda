@@ -27,10 +27,6 @@ class FuncionariosTab(QWidget):
         self.add_button.clicked.connect(self.add_funcionario)
         self.action_layout.addWidget(self.add_button)
         
-        self.edit_button = QPushButton("Editar Selecionado")
-        self.edit_button.clicked.connect(self.edit_funcionario)
-        self.action_layout.addWidget(self.edit_button)
-        
         self.delete_button = QPushButton("Excluir Selecionado")
         self.delete_button.clicked.connect(self.delete_funcionario)
         self.action_layout.addWidget(self.delete_button)
@@ -43,16 +39,21 @@ class FuncionariosTab(QWidget):
         
         # Tabela de funcionários
         self.table = QTableWidget()
-        self.table.setColumnCount(6)
+        self.table.setColumnCount(7)  # Aumentado para incluir coluna do botão Editar
         self.table.setHorizontalHeaderLabels([
             "Nome", "CPF", "Cargo", "Salário (R$)", 
-            "Data Contratação", "Ativo"
+            "Data Contratação", "Ativo", "Ações"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        # Definir largura da coluna de ações
+        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeToContents)
         self.layout.addWidget(self.table)
         
         # Carregar dados iniciais
         self.load_funcionarios()
+        
+        # Dicionário para armazenar os botões de editar
+        self.edit_buttons = {}
     
     def load_funcionarios(self):
         """Carrega os funcionários do banco de dados para a tabela."""
@@ -61,6 +62,7 @@ class FuncionariosTab(QWidget):
             funcionarios = session.query(Funcionario).all()
             
             self.table.setRowCount(0)  # Limpar tabela
+            self.edit_buttons = {}  # Limpar referências de botões
             
             for i, funcionario in enumerate(funcionarios):
                 self.table.insertRow(i)
@@ -70,7 +72,7 @@ class FuncionariosTab(QWidget):
                 
                 salario = "-"
                 if funcionario.salario:
-                    salario = f"R$ {float(funcionario.salario):.2f}"
+                    salario = f"R$ {float(funcionario.salario):,.2f}".replace(".", "X").replace(",", ".").replace("X", ",")
                 self.table.setItem(i, 3, QTableWidgetItem(salario))
                 
                 data = "-"
@@ -80,10 +82,42 @@ class FuncionariosTab(QWidget):
                 
                 ativo = "Sim" if funcionario.ativo else "Não"
                 self.table.setItem(i, 5, QTableWidgetItem(ativo))
+                
+                # Adiciona botão editar na última coluna
+                edit_btn = QPushButton("Editar")
+                edit_btn.setMaximumWidth(60)  # Reduz largura do botão
+                edit_btn.setStyleSheet("font-size: 10px;")  # Reduz tamanho da fonte
+                
+                # Conectar o botão à edição do registro específico
+                edit_btn.clicked.connect(lambda checked, row=i: self.edit_funcionario_from_button(row))
+                
+                # Armazenar referência ao botão para evitar coleta de lixo
+                self.edit_buttons[i] = edit_btn
+                
+                # Adicionar à tabela
+                self.table.setCellWidget(i, 6, edit_btn)
             
             session.close()
         except Exception as e:
             QMessageBox.critical(self, "Erro", f"Erro ao carregar funcionários: {str(e)}")
+    
+    def edit_funcionario_from_button(self, row):
+        """Edita o funcionário na linha especificada pelo botão."""
+        session = get_session()
+        funcionarios = session.query(Funcionario).all()
+        
+        if row >= len(funcionarios):
+            QMessageBox.warning(self, "Aviso", "Funcionário não encontrado.")
+            session.close()
+            return
+        
+        funcionario = funcionarios[row]
+        
+        dialog = FuncionarioDialog(self, funcionario)
+        if dialog.exec() == QDialog.Accepted:
+            self.load_funcionarios()
+        
+        session.close()
     
     def add_funcionario(self):
         """Abre o diálogo para adicionar um novo funcionário."""
@@ -182,8 +216,21 @@ class FuncionarioDialog(QDialog):
         self.cpf_input.setInputMask("999.999.999-99")
         form_layout.addRow("CPF:", self.cpf_input)
         
-        self.cargo_input = QLineEdit()
-        form_layout.addRow("Cargo:", self.cargo_input)
+        # Cargo como ComboBox com botão Editar
+        cargo_layout = QHBoxLayout()
+        self.cargo_input = QComboBox()
+        self.cargo_input.addItems([
+            "Gerente", "Administrador", "Operador", "Motorista", 
+            "Trabalhador Rural", "Secretário", "Técnico", "Outro"
+        ])
+        self.cargo_input.setEditable(True)
+        cargo_layout.addWidget(self.cargo_input)
+        
+        self.editar_cargo_button = QPushButton("Editar")
+        # self.editar_cargo_button.clicked.connect(self.editar_cargos)
+        cargo_layout.addWidget(self.editar_cargo_button)
+        
+        form_layout.addRow("Cargo:", cargo_layout)
         
         self.salario_input = QLineEdit()
         form_layout.addRow("Salário (R$):", self.salario_input)
@@ -224,7 +271,14 @@ class FuncionarioDialog(QDialog):
         """Preenche os campos com os dados do funcionário a ser editado."""
         self.nome_input.setText(self.funcionario.nome)
         self.cpf_input.setText(self.funcionario.cpf or "")
-        self.cargo_input.setText(self.funcionario.cargo or "")
+        
+        # Atualizar para usar ComboBox
+        if self.funcionario.cargo:
+            index = self.cargo_input.findText(self.funcionario.cargo)
+            if index >= 0:
+                self.cargo_input.setCurrentIndex(index)
+            else:
+                self.cargo_input.setCurrentText(self.funcionario.cargo)
         
         if self.funcionario.salario:
             self.salario_input.setText(str(float(self.funcionario.salario)))
@@ -258,14 +312,16 @@ class FuncionarioDialog(QDialog):
             # Atualizar dados
             self.funcionario.nome = self.nome_input.text().strip()
             self.funcionario.cpf = self.cpf_input.text().strip()
-            self.funcionario.cargo = self.cargo_input.text().strip()
+            self.funcionario.cargo = self.cargo_input.currentText().strip()
             
             if self.salario_input.text().strip():
-                self.funcionario.salario = float(self.salario_input.text().strip())
+                # Remover possíveis separadores de milhar e trocar vírgula por ponto
+                salario_texto = self.salario_input.text().strip().replace(".", "").replace(",", ".")
+                self.funcionario.salario = float(salario_texto)
             else:
                 self.funcionario.salario = None
             
-            self.funcionario.data_contratacao = self.data_input.date().toPython()
+            self.funcionario.data_contratacao = self.data_input.date().toPyDate()
             self.funcionario.ativo = self.ativo_input.isChecked()
             self.funcionario.telefone = self.telefone_input.text().strip()
             self.funcionario.endereco = self.endereco_input.toPlainText().strip()

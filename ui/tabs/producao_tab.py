@@ -27,10 +27,6 @@ class ProducaoTab(QWidget):
         self.add_button.clicked.connect(self.add_producao)
         self.action_layout.addWidget(self.add_button)
         
-        self.edit_button = QPushButton("Editar Selecionada")
-        self.edit_button.clicked.connect(self.edit_producao)
-        self.action_layout.addWidget(self.edit_button)
-        
         self.delete_button = QPushButton("Excluir Selecionada")
         self.delete_button.clicked.connect(self.delete_producao)
         self.action_layout.addWidget(self.delete_button)
@@ -43,16 +39,21 @@ class ProducaoTab(QWidget):
         
         # Tabela de produções
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(8)  # Aumentado para incluir coluna do botão Editar
         self.table.setHorizontalHeaderLabels([
             "Produto", "Quantidade", "Unidade", "Data Início", 
-            "Data Fim", "Área (ha)", "Custo Total (R$)"
+            "Data Fim", "Área (ha)", "Custo Total (R$)", "Ações"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        # Definir largura da coluna de ações
+        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeToContents)
         self.layout.addWidget(self.table)
         
         # Carregar dados iniciais
         self.load_producoes()
+        
+        # Dicionário para armazenar os botões de editar
+        self.edit_buttons = {}
     
     def load_producoes(self):
         """Carrega as produções do banco de dados para a tabela."""
@@ -61,11 +62,16 @@ class ProducaoTab(QWidget):
             producoes = session.query(Producao).all()
             
             self.table.setRowCount(0)  # Limpar tabela
+            self.edit_buttons = {}  # Limpar referências de botões
             
             for i, producao in enumerate(producoes):
                 self.table.insertRow(i)
                 self.table.setItem(i, 0, QTableWidgetItem(producao.produto))
-                self.table.setItem(i, 1, QTableWidgetItem(str(producao.quantidade)))
+                
+                # Formatação de quantidade com separador de milhar
+                quantidade = f"{producao.quantidade:,.2f}".replace(".", "X").replace(",", ".").replace("X", ",")
+                self.table.setItem(i, 1, QTableWidgetItem(quantidade))
+                
                 self.table.setItem(i, 2, QTableWidgetItem(producao.unidade or ""))
                 
                 data_inicio = "-"
@@ -80,17 +86,51 @@ class ProducaoTab(QWidget):
                 
                 area = "-"
                 if producao.area:
-                    area = f"{producao.area:.2f}"
+                    # Formatação com separador de milhar
+                    area = f"{producao.area:,.2f}".replace(".", "X").replace(",", ".").replace("X", ",")
                 self.table.setItem(i, 5, QTableWidgetItem(area))
                 
                 custo = "-"
                 if producao.custo_total:
-                    custo = f"R$ {float(producao.custo_total):.2f}"
+                    # Formatação com separador de milhar
+                    custo = f"R$ {float(producao.custo_total):,.2f}".replace(".", "X").replace(",", ".").replace("X", ",")
                 self.table.setItem(i, 6, QTableWidgetItem(custo))
+                
+                # Adiciona botão editar na última coluna
+                edit_btn = QPushButton("Editar")
+                edit_btn.setMaximumWidth(60)  # Reduz largura do botão
+                edit_btn.setStyleSheet("font-size: 10px;")  # Reduz tamanho da fonte
+                
+                # Conectar o botão à edição do registro específico
+                edit_btn.clicked.connect(lambda checked, row=i: self.edit_producao_from_button(row))
+                
+                # Armazenar referência ao botão para evitar coleta de lixo
+                self.edit_buttons[i] = edit_btn
+                
+                # Adicionar à tabela
+                self.table.setCellWidget(i, 7, edit_btn)
             
             session.close()
         except Exception as e:
             QMessageBox.critical(self, "Erro", f"Erro ao carregar produções: {str(e)}")
+    
+    def edit_producao_from_button(self, row):
+        """Edita a produção na linha especificada pelo botão."""
+        session = get_session()
+        producoes = session.query(Producao).all()
+        
+        if row >= len(producoes):
+            QMessageBox.warning(self, "Aviso", "Produção não encontrada.")
+            session.close()
+            return
+        
+        producao = producoes[row]
+        
+        dialog = ProducaoDialog(self, producao)
+        if dialog.exec() == QDialog.Accepted:
+            self.load_producoes()
+        
+        session.close()
     
     def add_producao(self):
         """Abre o diálogo para adicionar uma nova produção."""
@@ -182,23 +222,39 @@ class ProducaoDialog(QDialog):
         form_layout = QFormLayout()
         
         # Campos do formulário
+        # Produto com botão Editar
+        produto_layout = QHBoxLayout()
         self.produto_input = QComboBox()
         self.produto_input.addItems([
             "Soja", "Milho", "Trigo", "Feijão", "Algodão", 
             "Café", "Cana-de-açúcar", "Outro"
         ])
         self.produto_input.setEditable(True)
-        form_layout.addRow("Produto:", self.produto_input)
+        produto_layout.addWidget(self.produto_input)
+        
+        self.editar_produto_button = QPushButton("Editar")
+        # self.editar_produto_button.clicked.connect(self.editar_produtos)
+        produto_layout.addWidget(self.editar_produto_button)
+        
+        form_layout.addRow("Produto:", produto_layout)
         
         self.quantidade_input = QLineEdit()
         form_layout.addRow("Quantidade:", self.quantidade_input)
         
+        # Unidade com botão Editar
+        unidade_layout = QHBoxLayout()
         self.unidade_input = QComboBox()
         self.unidade_input.addItems([
             "kg", "ton", "sacos", "fardos", "litros", "unidades"
         ])
         self.unidade_input.setEditable(True)
-        form_layout.addRow("Unidade:", self.unidade_input)
+        unidade_layout.addWidget(self.unidade_input)
+        
+        self.editar_unidade_button = QPushButton("Editar")
+        # self.editar_unidade_button.clicked.connect(self.editar_unidades)
+        unidade_layout.addWidget(self.editar_unidade_button)
+        
+        form_layout.addRow("Unidade:", unidade_layout)
         
         self.data_inicio_input = QDateEdit()
         self.data_inicio_input.setDisplayFormat("dd/MM/yyyy")
@@ -249,7 +305,9 @@ class ProducaoDialog(QDialog):
                 self.produto_input.setCurrentText(self.producao.produto)
         
         if self.producao.quantidade:
-            self.quantidade_input.setText(str(self.producao.quantidade))
+            # Formatação com separador de milhar
+            quantidade_formatada = f"{self.producao.quantidade:,.2f}".replace(".", "X").replace(",", ".").replace("X", ",")
+            self.quantidade_input.setText(quantidade_formatada)
         
         if self.producao.unidade:
             index = self.unidade_input.findText(self.producao.unidade)
@@ -273,13 +331,19 @@ class ProducaoDialog(QDialog):
             self.data_fim_input.setDate(date)
         
         if self.producao.area:
-            self.area_input.setText(str(self.producao.area))
+            # Formatação com separador de milhar
+            area_formatada = f"{self.producao.area:,.2f}".replace(".", "X").replace(",", ".").replace("X", ",")
+            self.area_input.setText(area_formatada)
         
         if self.producao.custo_total:
-            self.custo_input.setText(str(float(self.producao.custo_total)))
+            # Formatação com separador de milhar
+            custo_formatado = f"{float(self.producao.custo_total):,.2f}".replace(".", "X").replace(",", ".").replace("X", ",")
+            self.custo_input.setText(custo_formatado)
         
         if self.producao.valor_venda:
-            self.valor_venda_input.setText(str(float(self.producao.valor_venda)))
+            # Formatação com separador de milhar
+            valor_venda_formatado = f"{float(self.producao.valor_venda):,.2f}".replace(".", "X").replace(",", ".").replace("X", ",")
+            self.valor_venda_input.setText(valor_venda_formatado)
         
         self.obs_input.setText(self.producao.observacoes or "")
     
@@ -295,7 +359,9 @@ class ProducaoDialog(QDialog):
             return
         
         try:
-            quantidade = float(self.quantidade_input.text().strip())
+            # Remover possíveis separadores de milhar e trocar vírgula por ponto
+            quantidade_texto = self.quantidade_input.text().strip().replace(".", "").replace(",", ".")
+            quantidade = float(quantidade_texto)
             if quantidade <= 0:
                 QMessageBox.warning(self, "Aviso", "A quantidade deve ser maior que zero.")
                 return
@@ -313,23 +379,26 @@ class ProducaoDialog(QDialog):
             
             # Atualizar dados
             self.producao.produto = self.produto_input.currentText().strip()
-            self.producao.quantidade = float(self.quantidade_input.text().strip())
+            self.producao.quantidade = quantidade
             self.producao.unidade = self.unidade_input.currentText().strip()
-            self.producao.data_inicio = self.data_inicio_input.date().toPython()
-            self.producao.data_fim = self.data_fim_input.date().toPython()
+            self.producao.data_inicio = self.data_inicio_input.date().toPyDate()
+            self.producao.data_fim = self.data_fim_input.date().toPyDate()
             
             if self.area_input.text().strip():
-                self.producao.area = float(self.area_input.text().strip())
+                area_texto = self.area_input.text().strip().replace(".", "").replace(",", ".")
+                self.producao.area = float(area_texto)
             else:
                 self.producao.area = None
             
             if self.custo_input.text().strip():
-                self.producao.custo_total = float(self.custo_input.text().strip())
+                custo_texto = self.custo_input.text().strip().replace(".", "").replace(",", ".")
+                self.producao.custo_total = float(custo_texto)
             else:
                 self.producao.custo_total = None
             
             if self.valor_venda_input.text().strip():
-                self.producao.valor_venda = float(self.valor_venda_input.text().strip())
+                valor_venda_texto = self.valor_venda_input.text().strip().replace(".", "").replace(",", ".")
+                self.producao.valor_venda = float(valor_venda_texto)
             else:
                 self.producao.valor_venda = None
             

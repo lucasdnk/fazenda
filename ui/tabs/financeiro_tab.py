@@ -41,10 +41,6 @@ class FinanceiroTab(QWidget):
         self.add_entrada_button.clicked.connect(self.add_entrada)
         self.entradas_action_layout.addWidget(self.add_entrada_button)
         
-        self.edit_entrada_button = QPushButton("Editar Selecionada")
-        self.edit_entrada_button.clicked.connect(self.edit_entrada)
-        self.entradas_action_layout.addWidget(self.edit_entrada_button)
-        
         self.delete_entrada_button = QPushButton("Excluir Selecionada")
         self.delete_entrada_button.clicked.connect(self.delete_entrada)
         self.entradas_action_layout.addWidget(self.delete_entrada_button)
@@ -57,11 +53,13 @@ class FinanceiroTab(QWidget):
         
         # Tabela de entradas
         self.entradas_table = QTableWidget()
-        self.entradas_table.setColumnCount(5)
+        self.entradas_table.setColumnCount(6)  # Aumentado para incluir coluna do botão Editar
         self.entradas_table.setHorizontalHeaderLabels([
-            "Descrição", "Valor (R$)", "Data", "Categoria", "Recebido"
+            "Descrição", "Valor (R$)", "Data", "Categoria", "Recebido", "Ações"
         ])
         self.entradas_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        # Definir largura da coluna de ações
+        self.entradas_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
         self.entradas_group_layout.addWidget(self.entradas_table)
         
         self.entradas_layout.addWidget(self.entradas_group)
@@ -82,10 +80,6 @@ class FinanceiroTab(QWidget):
         self.add_despesa_button.clicked.connect(self.add_despesa)
         self.despesas_action_layout.addWidget(self.add_despesa_button)
         
-        self.edit_despesa_button = QPushButton("Editar Selecionada")
-        self.edit_despesa_button.clicked.connect(self.edit_despesa)
-        self.despesas_action_layout.addWidget(self.edit_despesa_button)
-        
         self.delete_despesa_button = QPushButton("Excluir Selecionada")
         self.delete_despesa_button.clicked.connect(self.delete_despesa)
         self.despesas_action_layout.addWidget(self.delete_despesa_button)
@@ -98,17 +92,23 @@ class FinanceiroTab(QWidget):
         
         # Tabela de despesas
         self.despesas_table = QTableWidget()
-        self.despesas_table.setColumnCount(12)
+        self.despesas_table.setColumnCount(12)  # Aumentado para incluir coluna do botão Editar
         self.despesas_table.setHorizontalHeaderLabels([
-            "Descrição", "Valor (R$)", "Data", "Fornecedor", "Produto Retirado", "Data de Retirada",
-            "Data de Pagamento", "Categoria", "Forma Pagamento", "Pago",
-            "Usuário", "Data Adicionado"
+            "Descrição", "Valor (R$)", "Fornecedor", "Produto Retirado", "Data de Retirada",
+            "Data de Pagamento", "Categoria", "Forma Pagamento", "Status",
+            "Usuário", "Registro", "Ações"
         ])
         self.despesas_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        # Definir largura da coluna de ações
+        self.despesas_table.horizontalHeader().setSectionResizeMode(11, QHeaderView.ResizeToContents)
         self.despesas_group_layout.addWidget(self.despesas_table)
         
         self.despesas_layout.addWidget(self.despesas_group)
         self.splitter.addWidget(self.despesas_widget)
+        
+        # Dicionários para armazenar os botões de editar
+        self.edit_entrada_buttons = {}
+        self.edit_despesa_buttons = {}
         
         # Carregar dados iniciais
         self.load_entradas()
@@ -138,12 +138,16 @@ class FinanceiroTab(QWidget):
             entradas = session.query(Entrada).all()
             
             self.entradas_table.setRowCount(0)  # Limpar tabela
+            self.edit_entrada_buttons = {}  # Limpar referências de botões
             
             for i, entrada in enumerate(entradas):
                 self.entradas_table.insertRow(i)
                 self.entradas_table.setItem(i, 0, QTableWidgetItem(entrada.descricao))
                 
-                valor = f"R$ {float(entrada.valor):.2f}"
+                valor = "-"
+                if entrada.valor:
+                    # Formatação com separador de milhar
+                    valor = f"R$ {float(entrada.valor):,.2f}".replace(".", "X").replace(",", ".").replace("X", ",")
                 self.entradas_table.setItem(i, 1, QTableWidgetItem(valor))
                 
                 data = "-"
@@ -155,86 +159,27 @@ class FinanceiroTab(QWidget):
                 
                 recebido = "Sim" if entrada.recebido else "Não"
                 self.entradas_table.setItem(i, 4, QTableWidgetItem(recebido))
+                
+                # Adiciona botão editar na última coluna
+                edit_btn = QPushButton("Editar")
+                edit_btn.setMaximumWidth(60)  # Reduz largura do botão
+                edit_btn.setStyleSheet("font-size: 10px;")  # Reduz tamanho da fonte
+                
+                # Conectar o botão à edição do registro específico
+                edit_btn.clicked.connect(lambda checked, row=i: self.edit_entrada_from_button(row))
+                
+                # Armazenar referência ao botão para evitar coleta de lixo
+                self.edit_entrada_buttons[i] = edit_btn
+                
+                # Adicionar à tabela
+                self.entradas_table.setCellWidget(i, 5, edit_btn)
             
             session.close()
         except Exception as e:
             QMessageBox.critical(self, "Erro", f"Erro ao carregar entradas: {str(e)}")
     
-    def load_despesas(self):
-        """Carrega as despesas do banco de dados para a tabela."""
-        try:
-            session = get_session()
-            despesas = session.query(Despesa).all()
-            
-            self.despesas_table.setRowCount(0)  # Limpar tabela
-            
-            for i, despesa in enumerate(despesas):
-                self.despesas_table.insertRow(i)
-                self.despesas_table.setItem(i, 0, QTableWidgetItem(despesa.descricao))
-                
-                valor = f"R$ {float(despesa.valor):.2f}"
-                self.despesas_table.setItem(i, 1, QTableWidgetItem(valor))
-                
-                data = "-"
-                if despesa.data:
-                    data = despesa.data.strftime("%d/%m/%Y")
-                self.despesas_table.setItem(i, 2, QTableWidgetItem(data))
-                
-                # Fornecedor
-                self.despesas_table.setItem(i, 3, QTableWidgetItem(despesa.fornecedor or ""))
-                
-                # Produto Retirado
-                produto_retirado = "Sim" if despesa.produto_retirado else "Não"
-                self.despesas_table.setItem(i, 4, QTableWidgetItem(produto_retirado))
-                
-                # Data de retirada
-                data_retirada = "-"
-                if despesa.data_retirada:
-                    data_retirada = despesa.data_retirada.strftime("%d/%m/%Y")
-                self.despesas_table.setItem(i, 5, QTableWidgetItem(data_retirada))
-                
-                # Data de pagamento
-                data_pagamento = "-"
-                if despesa.data_pagamento:
-                    data_pagamento = despesa.data_pagamento.strftime("%d/%m/%Y")
-                self.despesas_table.setItem(i, 6, QTableWidgetItem(data_pagamento))
-                
-                # Categoria e forma de pagamento
-                self.despesas_table.setItem(i, 7, QTableWidgetItem(despesa.categoria or ""))
-                self.despesas_table.setItem(i, 8, QTableWidgetItem(despesa.forma_pagamento or ""))
-                
-                # Status de pagamento
-                pago = "Sim" if despesa.pago else "Não"
-                self.despesas_table.setItem(i, 9, QTableWidgetItem(pago))
-                
-                # Usuário que adicionou
-                self.despesas_table.setItem(i, 10, QTableWidgetItem(despesa.usuario_adicionou or ""))
-                
-                # Data de adição
-                data_adicionou = "-"
-                if despesa.data_adicionou:
-                    data_adicionou = despesa.data_adicionou.strftime("%d/%m/%Y")
-                self.despesas_table.setItem(i, 11, QTableWidgetItem(data_adicionou))
-            
-            session.close()
-        except Exception as e:
-            QMessageBox.critical(self, "Erro", f"Erro ao carregar despesas: {str(e)}")
-    
-    def add_entrada(self):
-        """Abre o diálogo para adicionar uma nova entrada."""
-        dialog = EntradaDialog(self)
-        if dialog.exec() == QDialog.Accepted:
-            self.load_entradas()
-    
-    def edit_entrada(self):
-        """Abre o diálogo para editar a entrada selecionada."""
-        selected_items = self.entradas_table.selectedItems()
-        if not selected_items:
-            QMessageBox.warning(self, "Aviso", "Selecione uma entrada para editar.")
-            return
-        
-        row = selected_items[0].row()
-        
+    def edit_entrada_from_button(self, row):
+        """Edita a entrada na linha especificada pelo botão."""
         session = get_session()
         entradas = session.query(Entrada).all()
         
@@ -250,6 +195,95 @@ class FinanceiroTab(QWidget):
             self.load_entradas()
         
         session.close()
+    
+    def load_despesas(self):
+        """Carrega as despesas do banco de dados para a tabela."""
+        try:
+            session = get_session()
+            despesas = session.query(Despesa).all()
+            
+            self.despesas_table.setRowCount(0)  # Limpar tabela
+            self.edit_despesa_buttons = {}  # Limpar referências de botões
+            
+            for i, despesa in enumerate(despesas):
+                self.despesas_table.insertRow(i)
+                self.despesas_table.setItem(i, 0, QTableWidgetItem(despesa.descricao))
+                
+                valor = "-"
+                if despesa.valor:
+                    valor = f"R$ {float(despesa.valor):,.2f}".replace(".", "X").replace(",", ".").replace("X", ",")
+                self.despesas_table.setItem(i, 1, QTableWidgetItem(valor))
+                
+                self.despesas_table.setItem(i, 2, QTableWidgetItem(despesa.fornecedor or ""))
+                self.despesas_table.setItem(i, 3, QTableWidgetItem(despesa.produto or ""))
+                
+                data_retirada = "-"
+                if despesa.data_retirada:
+                    data_retirada = despesa.data_retirada.strftime("%d/%m/%Y")
+                self.despesas_table.setItem(i, 4, QTableWidgetItem(data_retirada))
+                
+                data_pagamento = "-"
+                if despesa.data_pagamento:
+                    data_pagamento = despesa.data_pagamento.strftime("%d/%m/%Y")
+                self.despesas_table.setItem(i, 5, QTableWidgetItem(data_pagamento))
+                
+                self.despesas_table.setItem(i, 6, QTableWidgetItem(despesa.categoria or ""))
+                self.despesas_table.setItem(i, 7, QTableWidgetItem(despesa.forma_pagamento or ""))
+                self.despesas_table.setItem(i, 8, QTableWidgetItem(despesa.status or ""))
+                self.despesas_table.setItem(i, 9, QTableWidgetItem(despesa.usuario or ""))
+                
+                data_registro = "-"
+                if despesa.data_registro:
+                    data_registro = despesa.data_registro.strftime("%d/%m/%Y %H:%M")
+                self.despesas_table.setItem(i, 10, QTableWidgetItem(data_registro))
+                
+                # Adiciona botão editar na última coluna
+                edit_btn = QPushButton("Editar")
+                edit_btn.setMaximumWidth(60)  # Reduz largura do botão
+                edit_btn.setStyleSheet("font-size: 10px;")  # Reduz tamanho da fonte
+                
+                # Conectar o botão à edição do registro específico
+                edit_btn.clicked.connect(lambda checked, row=i: self.edit_despesa_from_button(row))
+                
+                # Armazenar referência ao botão para evitar coleta de lixo
+                self.edit_despesa_buttons[i] = edit_btn
+                
+                # Adicionar à tabela
+                self.despesas_table.setCellWidget(i, 11, edit_btn)
+            
+            session.close()
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Erro ao carregar despesas: {str(e)}")
+    
+    def edit_despesa_from_button(self, row):
+        """Edita a despesa na linha especificada pelo botão."""
+        session = get_session()
+        despesas = session.query(Despesa).all()
+        
+        if row >= len(despesas):
+            QMessageBox.warning(self, "Aviso", "Despesa não encontrada.")
+            session.close()
+            return
+        
+        despesa = despesas[row]
+        
+        dialog = DespesaDialog(self, despesa)
+        if dialog.exec() == QDialog.Accepted:
+            self.load_despesas()
+        
+        session.close()
+    
+    def add_entrada(self):
+        """Abre o diálogo para adicionar uma nova entrada."""
+        dialog = EntradaDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            self.load_entradas()
+    
+    def add_despesa(self):
+        """Abre o diálogo para adicionar uma nova despesa."""
+        dialog = DespesaDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            self.load_despesas()
     
     def delete_entrada(self):
         """Exclui a entrada selecionada."""
@@ -284,37 +318,6 @@ class FinanceiroTab(QWidget):
                 session.close()
             except Exception as e:
                 QMessageBox.critical(self, "Erro", f"Erro ao excluir entrada: {str(e)}")
-    
-    def add_despesa(self):
-        """Abre o diálogo para adicionar uma nova despesa."""
-        dialog = DespesaDialog(self)
-        if dialog.exec() == QDialog.Accepted:
-            self.load_despesas()
-    
-    def edit_despesa(self):
-        """Abre o diálogo para editar a despesa selecionada."""
-        selected_items = self.despesas_table.selectedItems()
-        if not selected_items:
-            QMessageBox.warning(self, "Aviso", "Selecione uma despesa para editar.")
-            return
-        
-        row = selected_items[0].row()
-        
-        session = get_session()
-        despesas = session.query(Despesa).all()
-        
-        if row >= len(despesas):
-            QMessageBox.warning(self, "Aviso", "Despesa não encontrada.")
-            session.close()
-            return
-        
-        despesa = despesas[row]
-        
-        dialog = DespesaDialog(self, despesa)
-        if dialog.exec() == QDialog.Accepted:
-            self.load_despesas()
-        
-        session.close()
     
     def delete_despesa(self):
         """Exclui a despesa selecionada."""
@@ -381,29 +384,29 @@ class DespesaDialog(QDialog):
         self.valor_input = QLineEdit()
         form_layout.addRow("Valor (R$):", self.valor_input)
         
-        # Fornecedor como ComboBox com botão Novo Fornecedor
+        # Fornecedor como ComboBox com botão Editar Fornecedor
         fornecedor_layout = QHBoxLayout()
         self.fornecedor_input = QComboBox()
         self.fornecedor_input.setEditable(True)
         self.carregar_fornecedores()
         fornecedor_layout.addWidget(self.fornecedor_input)
         
-        self.novo_fornecedor_button = QPushButton("Novo Fornecedor")
-        self.novo_fornecedor_button.clicked.connect(self.abrir_dialogo_fornecedor)
-        fornecedor_layout.addWidget(self.novo_fornecedor_button)
+        self.editar_fornecedor_button = QPushButton("Editar")
+        self.editar_fornecedor_button.clicked.connect(self.abrir_dialogo_fornecedor)
+        fornecedor_layout.addWidget(self.editar_fornecedor_button)
         
         form_layout.addRow("Fornecedor:", fornecedor_layout)
         
-        # Checkbox Produto Retirado
+        # Caixas de seleção em uma linha horizontal
+        checkbox_layout = QHBoxLayout()
         self.produto_retirado_input = QCheckBox("Produto Retirado")
-        form_layout.addRow("", self.produto_retirado_input)
+        checkbox_layout.addWidget(self.produto_retirado_input)
         
-        # Data normal
-        self.data_input = QDateEdit()
-        self.data_input.setDisplayFormat("dd/MM/yyyy")
-        self.data_input.setCalendarPopup(True)
-        self.data_input.setDate(QDate.currentDate())
-        form_layout.addRow("Data:", self.data_input)
+        self.pago_input = QCheckBox("Despesa Paga")
+        self.pago_input.setChecked(True)
+        checkbox_layout.addWidget(self.pago_input)
+        
+        form_layout.addRow("", checkbox_layout)
         
         # Data de retirada
         self.data_retirada_input = QDateEdit()
@@ -419,29 +422,41 @@ class DespesaDialog(QDialog):
         self.data_pagamento_input.setDate(QDate.currentDate())
         form_layout.addRow("Data de Pagamento:", self.data_pagamento_input)
         
-        # Usuário que adicionou
+        # Usuário que adicionou - Não editável, será preenchido automaticamente
         self.usuario_input = QLineEdit()
+        self.usuario_input.setReadOnly(True)  # Tornar não editável
+        self.usuario_input.setText("Sistema")  # Valor padrão
         form_layout.addRow("Usuário:", self.usuario_input)
         
+        # Categoria com botão Editar
+        categoria_layout = QHBoxLayout()
         self.categoria_input = QComboBox()
         self.categoria_input.addItems([
             "Insumos", "Combustível", "Manutenção", "Salários", 
             "Impostos", "Aluguel", "Serviços", "Outros"
         ])
         self.categoria_input.setEditable(True)
-        form_layout.addRow("Categoria:", self.categoria_input)
+        categoria_layout.addWidget(self.categoria_input)
         
+        self.editar_categoria_button = QPushButton("Editar")
+        categoria_layout.addWidget(self.editar_categoria_button)
+        
+        form_layout.addRow("Categoria:", categoria_layout)
+        
+        # Forma de pagamento com botão Editar
+        forma_pagamento_layout = QHBoxLayout()
         self.forma_pagamento_input = QComboBox()
         self.forma_pagamento_input.addItems([
             "Dinheiro", "Cartão de Crédito", "Cartão de Débito", 
             "Transferência", "PIX", "Boleto", "Cheque"
         ])
         self.forma_pagamento_input.setEditable(True)
-        form_layout.addRow("Forma de Pagamento:", self.forma_pagamento_input)
+        forma_pagamento_layout.addWidget(self.forma_pagamento_input)
         
-        self.pago_input = QCheckBox("Despesa Paga")
-        self.pago_input.setChecked(True)
-        form_layout.addRow("", self.pago_input)
+        self.editar_forma_pagamento_button = QPushButton("Editar")
+        forma_pagamento_layout.addWidget(self.editar_forma_pagamento_button)
+        
+        form_layout.addRow("Forma de Pagamento:", forma_pagamento_layout)
         
         self.obs_input = QTextEdit()
         form_layout.addRow("Observações:", self.obs_input)
@@ -483,8 +498,8 @@ class DespesaDialog(QDialog):
         if dialog.exec() == QDialog.Accepted:
             self.carregar_fornecedores()
             # Selecionar o fornecedor recém-adicionado
-            if dialog.fornecedor and dialog.fornecedor.nome:
-                index = self.fornecedor_input.findText(dialog.fornecedor.nome)
+            if dialog.nome_fornecedor:  # Usar nome diretamente ao invés do objeto fornecedor
+                index = self.fornecedor_input.findText(dialog.nome_fornecedor)
                 if index >= 0:
                     self.fornecedor_input.setCurrentIndex(index)
     
@@ -505,14 +520,6 @@ class DespesaDialog(QDialog):
         
         # Produto Retirado
         self.produto_retirado_input.setChecked(self.despesa.produto_retirado)
-        
-        # Data normal
-        if self.despesa.data:
-            date = QDate.fromString(
-                self.despesa.data.strftime("%Y-%m-%d"),
-                "yyyy-MM-dd"
-            )
-            self.data_input.setDate(date)
         
         # Data de retirada
         if self.despesa.data_retirada:
@@ -563,7 +570,9 @@ class DespesaDialog(QDialog):
             return
         
         try:
-            valor = float(self.valor_input.text().strip())
+            # Remover possíveis separadores de milhar e trocar vírgula por ponto
+            valor_texto = self.valor_input.text().strip().replace(".", "").replace(",", ".")
+            valor = float(valor_texto)
             if valor <= 0:
                 QMessageBox.warning(self, "Aviso", "O valor da despesa deve ser maior que zero.")
                 return
@@ -583,14 +592,16 @@ class DespesaDialog(QDialog):
             
             # Atualizar dados
             self.despesa.descricao = self.descricao_input.text().strip()
-            self.despesa.valor = float(self.valor_input.text().strip())
-            self.despesa.data = self.data_input.date().toPython()
+            self.despesa.valor = valor
+            
+            # Como removemos a coluna "data", usamos a data de pagamento como data principal
+            self.despesa.data = self.data_pagamento_input.date().toPyDate()
             
             # Novas colunas
             self.despesa.fornecedor = self.fornecedor_input.currentText().strip()
             self.despesa.produto_retirado = self.produto_retirado_input.isChecked()
-            self.despesa.data_retirada = self.data_retirada_input.date().toPython()
-            self.despesa.data_pagamento = self.data_pagamento_input.date().toPython()
+            self.despesa.data_retirada = self.data_retirada_input.date().toPyDate()
+            self.despesa.data_pagamento = self.data_pagamento_input.date().toPyDate()
             self.despesa.usuario_adicionou = self.usuario_input.text().strip()
             
             self.despesa.categoria = self.categoria_input.currentText()
@@ -647,22 +658,57 @@ class EntradaDialog(QDialog):
         self.valor_input = QLineEdit()
         form_layout.addRow("Valor (R$):", self.valor_input)
         
+        # Data de recebimento (renomeada de "Data" para "Data de Recebimento")
         self.data_input = QDateEdit()
         self.data_input.setDisplayFormat("dd/MM/yyyy")
         self.data_input.setCalendarPopup(True)
         self.data_input.setDate(QDate.currentDate())
-        form_layout.addRow("Data:", self.data_input)
+        form_layout.addRow("Data de Recebimento:", self.data_input)
         
+        # Categoria com botão Editar
+        categoria_layout = QHBoxLayout()
         self.categoria_input = QComboBox()
         self.categoria_input.addItems([
             "Venda de Produção", "Prestação de Serviços", "Aluguel", 
             "Subsídios", "Outros"
         ])
         self.categoria_input.setEditable(True)
-        form_layout.addRow("Categoria:", self.categoria_input)
+        categoria_layout.addWidget(self.categoria_input)
         
-        self.cliente_input = QLineEdit()
-        form_layout.addRow("Cliente:", self.cliente_input)
+        self.editar_categoria_button = QPushButton("Editar")
+        # self.editar_categoria_button.clicked.connect(self.editar_categorias)
+        categoria_layout.addWidget(self.editar_categoria_button)
+        
+        form_layout.addRow("Categoria:", categoria_layout)
+        
+        # Cliente como ComboBox com botão Editar
+        cliente_layout = QHBoxLayout()
+        self.cliente_input = QComboBox()
+        self.cliente_input.setEditable(True)
+        self.carregar_clientes()  # Método a ser implementado
+        cliente_layout.addWidget(self.cliente_input)
+        
+        self.editar_cliente_button = QPushButton("Editar")
+        # self.editar_cliente_button.clicked.connect(self.editar_clientes)
+        cliente_layout.addWidget(self.editar_cliente_button)
+        
+        form_layout.addRow("Cliente:", cliente_layout)
+        
+        # Forma de pagamento com botão Editar
+        forma_pagamento_layout = QHBoxLayout()
+        self.forma_pagamento_input = QComboBox()
+        self.forma_pagamento_input.addItems([
+            "Dinheiro", "Cartão de Crédito", "Cartão de Débito", 
+            "Transferência", "PIX", "Boleto", "Cheque"
+        ])
+        self.forma_pagamento_input.setEditable(True)
+        forma_pagamento_layout.addWidget(self.forma_pagamento_input)
+        
+        self.editar_forma_pagamento_button = QPushButton("Editar")
+        # self.editar_forma_pagamento_button.clicked.connect(self.editar_formas_pagamento)
+        forma_pagamento_layout.addWidget(self.editar_forma_pagamento_button)
+        
+        form_layout.addRow("Forma de Pagamento:", forma_pagamento_layout)
         
         self.recebido_input = QCheckBox("Valor Recebido")
         self.recebido_input.setChecked(True)
@@ -686,12 +732,22 @@ class EntradaDialog(QDialog):
         
         layout.addLayout(buttons_layout)
     
+    def carregar_clientes(self):
+        """Carrega a lista de clientes no ComboBox."""
+        # Implementação futura: carregar clientes do banco de dados
+        # Por enquanto, adiciona apenas alguns clientes fictícios
+        self.cliente_input.clear()
+        self.cliente_input.addItem("")  # Item vazio
+        self.cliente_input.addItems(["Cliente 1", "Cliente 2", "Cliente 3"])
+    
     def populate_fields(self):
         """Preenche os campos com os dados da entrada a ser editada."""
         self.descricao_input.setText(self.entrada.descricao)
         
         if self.entrada.valor:
-            self.valor_input.setText(str(float(self.entrada.valor)))
+            # Formatar valor com separador de milhar
+            valor_formatado = f"{float(self.entrada.valor):,.2f}".replace(".", "X").replace(",", ".").replace("X", ",")
+            self.valor_input.setText(valor_formatado)
         
         if self.entrada.data:
             date = QDate.fromString(
@@ -707,7 +763,22 @@ class EntradaDialog(QDialog):
             else:
                 self.categoria_input.setCurrentText(self.entrada.categoria)
         
-        self.cliente_input.setText(self.entrada.cliente or "")
+        # Cliente como ComboBox
+        if self.entrada.cliente:
+            index = self.cliente_input.findText(self.entrada.cliente)
+            if index >= 0:
+                self.cliente_input.setCurrentIndex(index)
+            else:
+                self.cliente_input.setCurrentText(self.entrada.cliente)
+        
+        # Forma de pagamento (campo a ser adicionado no modelo Entrada)
+        if hasattr(self.entrada, 'forma_pagamento') and self.entrada.forma_pagamento:
+            index = self.forma_pagamento_input.findText(self.entrada.forma_pagamento)
+            if index >= 0:
+                self.forma_pagamento_input.setCurrentIndex(index)
+            else:
+                self.forma_pagamento_input.setCurrentText(self.entrada.forma_pagamento)
+        
         self.recebido_input.setChecked(self.entrada.recebido)
         self.obs_input.setText(self.entrada.observacoes or "")
     
@@ -723,7 +794,9 @@ class EntradaDialog(QDialog):
             return
         
         try:
-            valor = float(self.valor_input.text().strip())
+            # Remover possíveis separadores de milhar e trocar vírgula por ponto
+            valor_texto = self.valor_input.text().strip().replace(".", "").replace(",", ".")
+            valor = float(valor_texto)
             if valor <= 0:
                 QMessageBox.warning(self, "Aviso", "O valor da entrada deve ser maior que zero.")
                 return
@@ -741,10 +814,15 @@ class EntradaDialog(QDialog):
             
             # Atualizar dados
             self.entrada.descricao = self.descricao_input.text().strip()
-            self.entrada.valor = float(self.valor_input.text().strip())
-            self.entrada.data = self.data_input.date().toPython()
+            self.entrada.valor = valor
+            self.entrada.data = self.data_input.date().toPyDate()
             self.entrada.categoria = self.categoria_input.currentText()
-            self.entrada.cliente = self.cliente_input.text().strip()
+            self.entrada.cliente = self.cliente_input.currentText().strip() # Alterado para ComboBox
+            
+            # Forma de pagamento (campo a ser adicionado no modelo Entrada)
+            if hasattr(self.entrada, 'forma_pagamento'):
+                self.entrada.forma_pagamento = self.forma_pagamento_input.currentText()
+            
             self.entrada.recebido = self.recebido_input.isChecked()
             self.entrada.observacoes = self.obs_input.toPlainText().strip()
             
@@ -773,6 +851,7 @@ class FornecedorDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.fornecedor = None
+        self.nome_fornecedor = None  # Armazenar o nome como string para evitar DetachedInstanceError
         self.setup_ui()
         self.setWindowTitle("Novo Fornecedor")
     
@@ -850,6 +929,7 @@ class FornecedorDialog(QDialog):
             
             # Atualizar dados
             self.fornecedor.nome = nome
+            self.nome_fornecedor = nome  # Salvar o nome como string para usar depois
             self.fornecedor.telefone = self.telefone_input.text().strip()
             self.fornecedor.email = self.email_input.text().strip()
             self.fornecedor.cnpj = self.cnpj_input.text().strip()
